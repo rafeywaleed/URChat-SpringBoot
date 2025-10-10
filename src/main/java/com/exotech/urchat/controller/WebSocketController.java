@@ -1,5 +1,6 @@
 package com.exotech.urchat.controller;
 
+import com.exotech.urchat.dto.messageDTOs.DeleteMessageRequest;
 import com.exotech.urchat.dto.messageDTOs.MessageDTO;
 import com.exotech.urchat.dto.messageDTOs.MessageDTOConvertor;
 import com.exotech.urchat.dto.chatDTOs.ChatRoomDTO;

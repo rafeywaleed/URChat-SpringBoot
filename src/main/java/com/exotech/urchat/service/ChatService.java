@@ -3,6 +3,7 @@ package com.exotech.urchat.service;
 import com.exotech.urchat.dto.messageDTOs.MessageDTO;
 import com.exotech.urchat.dto.messageDTOs.MessageDTOConvertor;
 import com.exotech.urchat.dto.chatDTOs.*;
+import com.exotech.urchat.dto.messageDTOs.MessageStatsDTO;
 import com.exotech.urchat.model.ChatRoom;
 import com.exotech.urchat.model.Message;
 import com.exotech.urchat.model.User;
@@ -93,7 +94,10 @@ public class ChatService {
 //        List<Message> messages = messageRepo.findMessagesWithChatRoom(chatId);
          List<Message> messages = messageRepo.findByChatRoom_ChatIdOrderByTimestampAsc(chatId);
 
+        LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(30);
+
         return messages.stream()
+                .filter(message -> message.getTimestamp().isAfter(thirtyDaysAgo))
                 .map(message -> messageDTOConvertor.convertToMessageDTO(message, username))
                 .collect(Collectors.toList());
     }
@@ -107,7 +111,10 @@ public class ChatService {
         List<Message> messages = messageRepo.findByChatRoomChatIdOrderByTimestampDesc(chatId, pageable);
         Collections.reverse(messages);
 
+        LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(30);
+
         return messages.stream()
+                .filter(message -> message.getTimestamp().isAfter(thirtyDaysAgo))
                 .map(message -> messageDTOConvertor.convertToMessageDTO(message, currentUser))
                 .collect(Collectors.toList());
     }
@@ -329,5 +336,18 @@ public class ChatService {
 
         // Update chat lists for remaining participants
         updateChatListsForParticipants(chatId, username);
+    }
+
+    public MessageStatsDTO getMessageStats(String chatId, String username) {
+        if (!chatRoomRepo.existsByChatIdAndParticipantUsername(chatId, username)) {
+            throw new RuntimeException("Access denied to this chat");
+        }
+
+        LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(30);
+        long totalMessages = messageRepo.countByChatRoomChatId(chatId);
+        long recentMessages = messageRepo.countByChatRoomChatIdAndTimestampAfter(chatId, thirtyDaysAgo);
+        long oldMessages = totalMessages - recentMessages;
+
+        return new MessageStatsDTO(totalMessages, recentMessages, oldMessages);
     }
 }

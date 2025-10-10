@@ -50,4 +50,24 @@ public interface MessageRepo extends JpaRepository<Message, Long> {
     List<Message> findByChatRoom_ChatId(String chatId);
 
     List<Message> findByChatRoom_ChatIdOrderByTimestampAsc(String chatId);
+
+    @Query("SELECT m FROM Message m WHERE m.timestamp < :threshold")
+    List<Message> findMessagesOlderThan(@Param("threshold") LocalDateTime threshold);
+
+    @Modifying
+    @Query("DELETE FROM Message m WHERE m.timestamp < :threshold")
+    int deleteMessagesOlderThan(@Param("threshold") LocalDateTime threshold);
+
+    @Query("SELECT COUNT(m) FROM Message m WHERE m.chatRoom.chatId = :chatId")
+    long countByChatRoomChatId(@Param("chatId") String chatId);
+
+    // Get messages with age information (for monitoring)
+    @Query("SELECT m FROM Message m WHERE m.timestamp BETWEEN :start AND :end")
+    List<Message> findMessagesBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
+    @Query("SELECT COUNT(m) FROM Message m WHERE m.timestamp < :threshold")
+    long countMessagesOlderThan(@Param("threshold") LocalDateTime threshold);
+
+    @Query("SELECT COUNT(m) FROM Message m WHERE m.chatRoom.chatId = :chatId AND m.timestamp > :timestamp")
+    long countByChatRoomChatIdAndTimestampAfter(@Param("chatId") String chatId, @Param("timestamp") LocalDateTime timestamp);
 }

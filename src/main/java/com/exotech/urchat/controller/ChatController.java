@@ -2,13 +2,18 @@ package com.exotech.urchat.controller;
 
 import com.exotech.urchat.dto.messageDTOs.MessageDTO;
 import com.exotech.urchat.dto.chatDTOs.*;
+import com.exotech.urchat.dto.messageDTOs.MessageStatsDTO;
+import com.exotech.urchat.repository.MessageRepo;
 import com.exotech.urchat.service.ChatService;
 import com.exotech.urchat.service.GroupChatService;
+import com.exotech.urchat.service.MessageCleanupService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.List;
 
 @RestController
@@ -16,8 +21,10 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ChatController {
 
+    private final MessageCleanupService messageCleanupService;
     private final ChatService chatService;
     private final GroupChatService groupChatService;
+    private final MessageRepo messageRepo;
 
     @GetMapping("/chats")
     public ResponseEntity<List<ChatRoomDTO>> getUserChats(@AuthenticationPrincipal String username) {
@@ -182,5 +189,41 @@ public class ChatController {
             @PathVariable String chatId) {
         chatService.leaveGroup(chatId, username);
         return ResponseEntity.ok("Left chat successfully");
+    }
+
+    @PostMapping("/admin/cleanup-messages")
+    public ResponseEntity<String> triggerManualCleanup(@AuthenticationPrincipal String username) {
+        // Only allow admin users to trigger manual cleanup
+        if (!isAdmin(username)) {
+            return ResponseEntity.status(403).body("Only admins can trigger manual cleanup");
+        }
+
+        try {
+            messageCleanupService.deleteMessagesOlderThan30Days();
+            return ResponseEntity.ok("Manual cleanup completed successfully");
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body("Cleanup failed: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/admin/message-stats")
+    public ResponseEntity<MessageStatsDTO> getMessageStatistics(@AuthenticationPrincipal String username) {
+        if (!isAdmin(username)) {
+            return ResponseEntity.status(403).build();
+        }
+
+        LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(30);
+        long totalMessages = messageRepo.count();
+        long oldMessages = messageRepo.countMessagesOlderThan(thirtyDaysAgo);
+        long recentMessages = totalMessages - oldMessages;
+
+        MessageStatsDTO stats = new MessageStatsDTO(totalMessages, recentMessages, oldMessages);
+        return ResponseEntity.ok(stats);
+    }
+
+    private boolean isAdmin(String username) {
+        // Implement your admin check logic here
+        // This could check against a list of admin usernames or a role in the user entity
+        return Arrays.asList("admin", "administrator").contains(username.toLowerCase());
     }
 }
