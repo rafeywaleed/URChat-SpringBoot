@@ -8,6 +8,8 @@ import com.exotech.urchat.repository.ChatRoomRepo;
 import com.exotech.urchat.repository.MessageRepo;
 import com.exotech.urchat.repository.UserRepo;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,6 +19,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class GroupChatService {
@@ -24,6 +27,7 @@ public class GroupChatService {
     private final ChatRoomRepo chatRoomRepo;
     private final MessageRepo messageRepo;
     private final UserRepo userRepo;
+    private final SimpMessagingTemplate messagingTemplate;
     private final MessageDTOConvertor messageDTOConvertor;
     private final ChatDTOConvertor chatDTOConvertor;
     private final ChatService chatService;
@@ -106,7 +110,7 @@ public class GroupChatService {
 
     @Transactional
     public void leaveGroup(String chatId, String username) {
-        ChatRoom chat = chatRoomRepo.findById(chatId)
+        ChatRoom chat = chatRoomRepo.findByIdWithParticipants(chatId)
                 .orElseThrow(() -> new RuntimeException("Group not found"));
         User user = userRepo.findByUsername(username)
                 .orElseThrow(() -> new RuntimeException("User not found"));
@@ -117,17 +121,81 @@ public class GroupChatService {
 
         chat.getParticipants().removeIf(participant -> participant.getUsername().equals(username));
 
+        // If admin leaves and there are other participants, assign new admin
         if (chat.getAdmin().getUsername().equals(username)) {
             if (!chat.getParticipants().isEmpty()) {
                 User newAdmin = chat.getParticipants().get(0);
                 chat.setAdmin(newAdmin);
+                log.info("Transferred admin rights to {} in group {}", newAdmin.getUsername(), chatId);
             } else {
+                // If no participants left, PERMANENTLY DELETE THE GROUP
+                messageRepo.deleteAllByChatId(chatId);
                 chatRoomRepo.delete(chat);
+                log.info("PERMANENTLY deleted empty group {} from database", chatId);
+
+                // Broadcast group deletion
+                broadcastGroupDeletion(chatId);
                 return;
             }
         }
 
         chatRoomRepo.save(chat);
+        log.info("User {} left group {}", username, chatId);
+
+        // Update chat lists for all remaining participants
+        updateChatListsForAllParticipants(chatId);
+    }
+
+    private void broadcastGroupDeletion(String chatId) {
+        try {
+            messagingTemplate.convertAndSend("/topic/chat/" + chatId + "/chat-deleted", chatId);
+            log.info("Broadcasted group deletion {} to all users", chatId);
+        } catch (Exception e) {
+            log.error("Error broadcasting group deletion: {}", e.getMessage());
+        }
+    }
+
+    private void updateChatListsForAllParticipants(String chatId) {
+        try {
+            ChatRoom chat = chatRoomRepo.findByIdWithParticipants(chatId)
+                    .orElseThrow(() -> new RuntimeException("Chat not found"));
+
+            for (User participant : chat.getParticipants()) {
+                updateChatListForUser(participant.getUsername());
+            }
+        } catch (Exception e) {
+            log.error("Error updating chat lists for participants: {}", e.getMessage());
+        }
+    }
+
+    private void updateChatListForUser(String username) {
+        try {
+            List<ChatRoomDTO> updatedChats = getUserChats(username);
+            messagingTemplate.convertAndSendToUser(
+                    username,
+                    "/queue/chats/update",
+                    updatedChats
+            );
+        } catch (Exception e) {
+            log.error("Error updating chat list for user {}: {}", username, e.getMessage());
+        }
+    }
+
+    // Add this method to get user chats
+    private List<ChatRoomDTO> getUserChats(String username) {
+        List<ChatRoom> chats = chatRoomRepo.findByParticipantUsername(username);
+        chats.sort((a, b) -> b.getLastActivity().compareTo(a.getLastActivity()));
+
+        return chats.stream()
+                .map(chat -> {
+                    ChatRoomDTO dto = chatDTOConvertor.convertToChatRoomDTO(chat);
+                    dto.setChatName(chat.getDisplayName(username));
+                    dto.setPfpIndex(chat.getChatPfpIndex(username));
+                    dto.setPfpBg(chat.getChatPfpBg(username));
+                    dto.setLastMessage(chat.getLastMessage());
+                    return dto;
+                })
+                .collect(Collectors.toList());
     }
 
     @Transactional

@@ -49,12 +49,13 @@ public class User {
     @CreationTimestamp
     private LocalDateTime joinedAt;
 
-    @ManyToMany(mappedBy = "participants")
+    @ManyToMany(mappedBy = "participants", cascade = {CascadeType.PERSIST, CascadeType.MERGE})
     @ToString.Exclude
     private List<ChatRoom> chatRooms = new ArrayList<>();
 
 
-    @ManyToMany(mappedBy = "pendingInvitations")
+
+    @ManyToMany(mappedBy = "pendingInvitations", cascade = {CascadeType.PERSIST, CascadeType.MERGE})
     @ToString.Exclude
     private List<ChatRoom> chatRoomInvitations = new ArrayList<>();
 

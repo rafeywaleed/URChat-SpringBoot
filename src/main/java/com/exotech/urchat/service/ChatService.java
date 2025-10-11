@@ -4,6 +4,7 @@ import com.exotech.urchat.dto.messageDTOs.MessageDTO;
 import com.exotech.urchat.dto.messageDTOs.MessageDTOConvertor;
 import com.exotech.urchat.dto.chatDTOs.*;
 import com.exotech.urchat.dto.messageDTOs.MessageStatsDTO;
+import com.exotech.urchat.dto.webSocketDTOs.MessageDeletionBroadcast;
 import com.exotech.urchat.model.ChatRoom;
 import com.exotech.urchat.model.Message;
 import com.exotech.urchat.model.User;
@@ -262,16 +263,30 @@ public class ChatService {
             throw new RuntimeException("Access denied to this chat");
         }
 
+        // PERMANENTLY DELETE THE MESSAGE FROM DATABASE
         messageRepo.delete(message);
-        log.info("Message {} deleted by user {}", messageId, username);
+        log.info("Message {} PERMANENTLY deleted by user {} from database", messageId, username);
 
         // Update last message if needed
         updateChatLastMessageIfNeeded(chatId, messageId);
+
+        // Broadcast deletion to all participants
+        broadcastMessageDeletion(chatId, messageId);
+    }
+
+    private void broadcastMessageDeletion(String chatId, Long messageId) {
+        try {
+            MessageDeletionBroadcast broadcast = new MessageDeletionBroadcast(messageId, chatId);
+            messagingTemplate.convertAndSend("/topic/chat/" + chatId + "/message-deleted", broadcast);
+            log.info("Broadcasted message deletion {} to all participants of chat {}", messageId, chatId);
+        } catch (Exception e) {
+            log.error("Error broadcasting message deletion: {}", e.getMessage());
+        }
     }
 
     @Transactional
     public void deleteChat(String chatId, String username) {
-        ChatRoom chatRoom = chatRoomRepo.findById(chatId)
+        ChatRoom chatRoom = chatRoomRepo.findByIdWithParticipants(chatId)
                 .orElseThrow(() -> new RuntimeException("Chat not found"));
 
         // Check if user is participant
@@ -279,10 +294,18 @@ public class ChatService {
             throw new RuntimeException("You are not a participant of this chat");
         }
 
-        // For individual chats, just remove the user
+        // For individual chats - PERMANENTLY DELETE FOR BOTH USERS
         if (!chatRoom.getIsGroup()) {
-            removeChatFromUser(username, chatId);
-            log.info("User {} removed from individual chat {}", username, chatId);
+            // Delete all messages first
+            messageRepo.deleteAllByChatId(chatId);
+            log.info("Deleted all messages from individual chat: {}", chatId);
+
+            // Then delete the chat room completely from database
+            chatRoomRepo.delete(chatRoom);
+            log.info("PERMANENTLY deleted individual chat {} from database by user {}", chatId, username);
+
+            // Broadcast chat deletion to all participants
+            broadcastChatDeletion(chatId);
         }
         // For group chats, only admin can delete the entire group
         else {
@@ -292,13 +315,43 @@ public class ChatService {
 
             // Delete all messages first
             messageRepo.deleteAllByChatId(chatId);
+            log.info("Deleted all messages from group chat: {}", chatId);
 
-            // Then delete the chat room
+            // Then delete the chat room completely from database
             chatRoomRepo.delete(chatRoom);
-            log.info("Group chat {} deleted by admin {}", chatId, username);
+            log.info("PERMANENTLY deleted group chat {} from database by admin {}", chatId, username);
+
+            // Broadcast chat deletion to all participants
+            broadcastChatDeletion(chatId);
         }
     }
 
+    private void broadcastChatDeletion(String chatId) {
+        try {
+            // This will notify all users that the chat no longer exists
+            // Frontend should handle this by removing the chat from their lists
+            messagingTemplate.convertAndSend("/topic/chat/" + chatId + "/chat-deleted", chatId);
+            log.info("Broadcasted chat deletion {} to all participants", chatId);
+        } catch (Exception e) {
+            log.error("Error broadcasting chat deletion: {}", e.getMessage());
+        }
+    }
+
+    @Transactional
+    public void verifyChatDeletion(String chatId) {
+        boolean chatExists = chatRoomRepo.existsById(chatId);
+        long messageCount = messageRepo.countByChatRoomChatId(chatId);
+
+        log.info("Chat {} exists: {}", chatId, chatExists);
+        log.info("Messages in chat {}: {}", chatId, messageCount);
+
+        if (!chatExists && messageCount == 0) {
+            log.info("✅ Chat {} successfully deleted from database", chatId);
+        } else {
+            log.error("❌ Chat {} deletion failed - still exists: {}, messages: {}",
+                    chatId, chatExists, messageCount);
+        }
+    }
     private void updateChatLastMessageIfNeeded(String chatId, Long deletedMessageId) {
         ChatRoom chatRoom = chatRoomRepo.findById(chatId)
                 .orElseThrow(() -> new RuntimeException("Chat not found"));

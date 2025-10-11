@@ -216,12 +216,8 @@ public class WebSocketController {
         try {
             chatService.deleteMessage(request.getMessageId(), username);
 
-            // Broadcast message deletion to all participants
-            MessageDeletionBroadcast broadcast = new MessageDeletionBroadcast(request.getMessageId(), chatId);
-            messagingTemplate.convertAndSend("/topic/chat/" + chatId + "/message-deleted", broadcast);
-
-            // Update chat lists
-            updateChatListsForParticipants(chatId, username);
+            // The broadcast is now handled in the service layer
+            log.info("Message deletion completed for message {} in chat {}", request.getMessageId(), chatId);
 
         } catch (Exception e) {
             log.error("Error deleting message: {}", e.getMessage());
@@ -229,6 +225,31 @@ public class WebSocketController {
                     username,
                     "/queue/errors",
                     new ErrorMessage("MESSAGE_DELETE_FAILED", e.getMessage())
+            );
+        }
+    }
+
+    // Add this method for handling chat deletion via WebSocket
+    @MessageMapping("/chat/{chatId}/delete-chat")
+    public void deleteChat(
+            @DestinationVariable String chatId,
+            Principal principal) {
+
+        String username = principal.getName();
+        log.info("User {} deleting chat {}", username, chatId);
+
+        try {
+            chatService.deleteChat(chatId, username);
+
+            // The broadcast is handled in the service layer
+            log.info("Chat deletion completed for chat {} by user {}", chatId, username);
+
+        } catch (Exception e) {
+            log.error("Error deleting chat: {}", e.getMessage());
+            messagingTemplate.convertAndSendToUser(
+                    username,
+                    "/queue/errors",
+                    new ErrorMessage("CHAT_DELETE_FAILED", e.getMessage())
             );
         }
     }

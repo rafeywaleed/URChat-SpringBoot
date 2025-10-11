@@ -29,7 +29,7 @@ public class ChatRoom {
     private LocalDateTime lastActivity;
     private String lastMessage;
 
-    @ManyToMany()
+    @ManyToMany(cascade = {CascadeType.PERSIST, CascadeType.MERGE})
     @JoinTable(
             name = "chat_room_participants",
             joinColumns = @JoinColumn(name = "chat_id"),
@@ -38,7 +38,7 @@ public class ChatRoom {
     @ToString.Exclude
     private List<User> participants = new ArrayList<>();
 
-    @ManyToMany()
+    @ManyToMany(cascade = {CascadeType.PERSIST, CascadeType.MERGE})
     @JoinTable(
             name = "chat_room_pending_invitations",
             joinColumns = @JoinColumn(name = "chat_id"),
@@ -53,7 +53,6 @@ public class ChatRoom {
     private User admin;
 
     @OneToMany(mappedBy = "chatRoom", cascade = CascadeType.ALL, orphanRemoval = true)
-
     @ToString.Exclude
     private List<Message> messages = new ArrayList<>();
 
