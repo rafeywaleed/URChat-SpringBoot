@@ -32,7 +32,12 @@ public interface MessageRepo extends JpaRepository<Message, Long> {
 
     @Modifying
     @Query("DELETE FROM Message m WHERE m.chatRoom.chatId = :chatId")
-    void deleteAllByChatId(@Param("chatId") String chatId);
+    int deleteAllByChatId(@Param("chatId") String chatId);
+
+    @Modifying
+    @Query("DELETE FROM Message m WHERE m.chatRoom.chatId IN :chatIds")
+    int deleteAllByChatIds(@Param("chatIds") List<String> chatIds);
+
 
     @Query("SELECT m FROM Message m WHERE m.chatRoom.chatId = :chatId AND m.sender.username = :sender ORDER BY m.timestamp DESC")
     List<Message> findUserMessagesInChat(@Param("chatId") String chatId, @Param("sender") String sender);

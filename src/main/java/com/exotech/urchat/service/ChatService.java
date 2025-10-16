@@ -4,6 +4,7 @@ import com.exotech.urchat.dto.messageDTOs.MessageDTO;
 import com.exotech.urchat.dto.messageDTOs.MessageDTOConvertor;
 import com.exotech.urchat.dto.chatDTOs.*;
 import com.exotech.urchat.dto.messageDTOs.MessageStatsDTO;
+import com.exotech.urchat.dto.webSocketDTOs.ChatDeletionBroadcast;
 import com.exotech.urchat.dto.webSocketDTOs.MessageDeletionBroadcast;
 import com.exotech.urchat.model.ChatRoom;
 import com.exotech.urchat.model.Message;
@@ -35,6 +36,7 @@ public class ChatService {
     private final MessageDTOConvertor messageDTOConvertor;
     private final ChatDTOConvertor chatDTOConvertor;
     private final SimpMessagingTemplate messagingTemplate;
+    private final NotificationService notificationService;
 
     @Transactional
     public ChatRoomDTO getOrCreateIndividualChat(String user1, String user2) {
@@ -85,6 +87,14 @@ public class ChatService {
         chat.setLastActivity(LocalDateTime.now());
         chatRoomRepo.save(chat);
 
+        notificationService.sendMessageNotification(
+                chatId,
+                senderUsername,
+                content,
+                chat.getDisplayName(senderUsername),
+                chat.getIsGroup()
+        );
+
         return savedMessage;
     }
 
@@ -95,7 +105,7 @@ public class ChatService {
 //        List<Message> messages = messageRepo.findMessagesWithChatRoom(chatId);
          List<Message> messages = messageRepo.findByChatRoom_ChatIdOrderByTimestampAsc(chatId);
 
-        LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(30);
+        LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(7);
 
         return messages.stream()
                 .filter(message -> message.getTimestamp().isAfter(thirtyDaysAgo))
@@ -112,7 +122,7 @@ public class ChatService {
         List<Message> messages = messageRepo.findByChatRoomChatIdOrderByTimestampDesc(chatId, pageable);
         Collections.reverse(messages);
 
-        LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(30);
+        LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(7);
 
         return messages.stream()
                 .filter(message -> message.getTimestamp().isAfter(thirtyDaysAgo))
@@ -296,16 +306,7 @@ public class ChatService {
 
         // For individual chats - PERMANENTLY DELETE FOR BOTH USERS
         if (!chatRoom.getIsGroup()) {
-            // Delete all messages first
-            messageRepo.deleteAllByChatId(chatId);
-            log.info("Deleted all messages from individual chat: {}", chatId);
-
-            // Then delete the chat room completely from database
-            chatRoomRepo.delete(chatRoom);
-            log.info("PERMANENTLY deleted individual chat {} from database by user {}", chatId, username);
-
-            // Broadcast chat deletion to all participants
-            broadcastChatDeletion(chatId);
+            permanentlyDeleteIndividualChat(chatId, username);
         }
         // For group chats, only admin can delete the entire group
         else {
@@ -313,16 +314,152 @@ public class ChatService {
                 throw new RuntimeException("Only group admin can delete the group");
             }
 
-            // Delete all messages first
-            messageRepo.deleteAllByChatId(chatId);
-            log.info("Deleted all messages from group chat: {}", chatId);
+            // Admin is deleting the entire group - PERMANENTLY DELETE EVERYTHING
+            permanentlyDeleteGroupWithAllMessages(chatId, username);
+        }
+    }
 
-            // Then delete the chat room completely from database
-            chatRoomRepo.delete(chatRoom);
-            log.info("PERMANENTLY deleted group chat {} from database by admin {}", chatId, username);
+    @Transactional
+    public void permanentlyDeleteGroupWithAllMessages(String chatId, String deletedBy) {
+        try {
+            ChatRoom chat = chatRoomRepo.findById(chatId)
+                    .orElseThrow(() -> new RuntimeException("Group not found"));
 
-            // Broadcast chat deletion to all participants
-            broadcastChatDeletion(chatId);
+            if (!chat.getIsGroup()) {
+                throw new RuntimeException("Chat is not a group");
+            }
+
+            log.info("🗑️ Admin {} initiating permanent deletion of group {} and ALL messages", deletedBy, chatId);
+
+            // Get participant list for notification before deletion
+            List<String> participantUsernames = chat.getParticipants().stream()
+                    .map(User::getUsername)
+                    .collect(Collectors.toList());
+
+            // 1. Delete all messages from the group
+            int deletedMessages = messageRepo.deleteAllByChatId(chatId);
+            log.info("✅ Deleted {} messages from group {}", deletedMessages, chatId);
+
+            // 2. Delete the group itself from database
+            chatRoomRepo.delete(chat);
+            log.info("✅ PERMANENTLY deleted group {} from database by admin {}", chatId, deletedBy);
+
+            // 3. Broadcast group deletion to all former participants
+            broadcastGroupDeletionToParticipants(chatId, participantUsernames, deletedBy);
+
+            // 4. Verify deletion
+            verifyGroupDeletion(chatId);
+
+        } catch (Exception e) {
+            log.error("❌ Error in admin group deletion {}: {}", chatId, e.getMessage());
+            throw new RuntimeException("Failed to delete group: " + e.getMessage(), e);
+        }
+    }
+
+    @Transactional
+    public void permanentlyDeleteIndividualChat(String chatId, String deletedBy) {
+        try {
+            ChatRoom chat = chatRoomRepo.findById(chatId)
+                    .orElseThrow(() -> new RuntimeException("Chat not found"));
+
+            if (chat.getIsGroup()) {
+                throw new RuntimeException("Chat is a group, not individual");
+            }
+
+            log.info("🗑️ User {} initiating permanent deletion of individual chat {}", deletedBy, chatId);
+
+            // Get participant list for notification before deletion
+            List<String> participantUsernames = chat.getParticipants().stream()
+                    .map(User::getUsername)
+                    .collect(Collectors.toList());
+
+            // 1. Delete all messages from the chat
+            int deletedMessages = messageRepo.deleteAllByChatId(chatId);
+            log.info("✅ Deleted {} messages from individual chat {}", deletedMessages, chatId);
+
+            // 2. Delete the chat itself from database
+            chatRoomRepo.delete(chat);
+            log.info("✅ PERMANENTLY deleted individual chat {} from database by user {}", chatId, deletedBy);
+
+            // 3. Broadcast chat deletion to both participants
+            broadcastChatDeletionToParticipants(chatId, participantUsernames, deletedBy);
+
+            // 4. Verify deletion
+            verifyChatDeletion(chatId);
+
+        } catch (Exception e) {
+            log.error("❌ Error in individual chat deletion {}: {}", chatId, e.getMessage());
+            throw new RuntimeException("Failed to delete chat: " + e.getMessage(), e);
+        }
+    }
+
+    private void broadcastGroupDeletionToParticipants(String chatId, List<String> participantUsernames, String deletedBy) {
+        try {
+            ChatDeletionBroadcast broadcast = new ChatDeletionBroadcast(chatId, deletedBy, "admin_deleted");
+
+            // Send to each participant individually
+            for (String username : participantUsernames) {
+                messagingTemplate.convertAndSendToUser(
+                        username,
+                        "/queue/chat-deleted",
+                        broadcast
+                );
+            }
+
+            // Also broadcast to the chat topic for real-time updates
+            messagingTemplate.convertAndSend("/topic/chat/" + chatId + "/chat-deleted", broadcast);
+
+            log.info("📢 Broadcasted group deletion {} to {} participants", chatId, participantUsernames.size());
+        } catch (Exception e) {
+            log.error("Error broadcasting group deletion: {}", e.getMessage());
+        }
+    }
+
+    private void verifyChatDeletion(String chatId) {
+        boolean chatExists = chatRoomRepo.existsById(chatId);
+        long messageCount = messageRepo.countByChatRoomChatId(chatId);
+
+        if (!chatExists && messageCount == 0) {
+            log.info("✅ VERIFIED: Chat {} and all messages successfully deleted from database", chatId);
+        } else {
+            log.error("❌ VERIFICATION FAILED: Chat {} still exists: {}, remaining messages: {}",
+                    chatId, chatExists, messageCount);
+            throw new RuntimeException("Chat deletion verification failed");
+        }
+    }
+
+    private void verifyGroupDeletion(String chatId) {
+        boolean groupExists = chatRoomRepo.existsById(chatId);
+        long remainingMessages = messageRepo.countByChatRoomChatId(chatId);
+
+        if (!groupExists && remainingMessages == 0) {
+            log.info("✅ VERIFIED: Group {} and all messages successfully deleted from database", chatId);
+        } else {
+            log.error("❌ VERIFICATION FAILED: Group {} still exists: {}, remaining messages: {}",
+                    chatId, groupExists, remainingMessages);
+            throw new RuntimeException("Group deletion verification failed");
+        }
+    }
+
+    private void broadcastChatDeletionToParticipants(String chatId, List<String> participantUsernames, String deletedBy) {
+        try {
+            ChatDeletionBroadcast broadcast = new ChatDeletionBroadcast(chatId, deletedBy, "user_deleted");
+
+            // Send to each participant individually
+            for (String username : participantUsernames) {
+                messagingTemplate.convertAndSendToUser(
+                        username,
+                        "/queue/chat-deleted",
+                        broadcast
+                );
+            }
+
+            // Also broadcast to the chat topic for real-time updates
+            messagingTemplate.convertAndSend("/topic/chat/" + chatId + "/chat-deleted", broadcast);
+
+            log.info("📢 Broadcasted individual chat deletion {} to {} participants", chatId, participantUsernames.size());
+        } catch (Exception e) {
+            log.error("Error broadcasting individual chat deletion: {}", e.getMessage());
         }
     }
 
@@ -337,21 +474,6 @@ public class ChatService {
         }
     }
 
-    @Transactional
-    public void verifyChatDeletion(String chatId) {
-        boolean chatExists = chatRoomRepo.existsById(chatId);
-        long messageCount = messageRepo.countByChatRoomChatId(chatId);
-
-        log.info("Chat {} exists: {}", chatId, chatExists);
-        log.info("Messages in chat {}: {}", chatId, messageCount);
-
-        if (!chatExists && messageCount == 0) {
-            log.info("✅ Chat {} successfully deleted from database", chatId);
-        } else {
-            log.error("❌ Chat {} deletion failed - still exists: {}, messages: {}",
-                    chatId, chatExists, messageCount);
-        }
-    }
     private void updateChatLastMessageIfNeeded(String chatId, Long deletedMessageId) {
         ChatRoom chatRoom = chatRoomRepo.findById(chatId)
                 .orElseThrow(() -> new RuntimeException("Chat not found"));
@@ -396,7 +518,7 @@ public class ChatService {
             throw new RuntimeException("Access denied to this chat");
         }
 
-        LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(30);
+        LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(7);
         long totalMessages = messageRepo.countByChatRoomChatId(chatId);
         long recentMessages = messageRepo.countByChatRoomChatIdAndTimestampAfter(chatId, thirtyDaysAgo);
         long oldMessages = totalMessages - recentMessages;

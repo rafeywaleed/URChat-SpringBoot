@@ -27,4 +27,8 @@ public interface UserRepo extends JpaRepository<User, String> {
 
     @Query("SELECT u FROM User u JOIN u.chatRoomInvitations cri WHERE cri.chatId = :chatId")
     List<User> findUsersWithPendingInvitation(@Param("chatId") String chatId);
+
+    @Query("SELECT u FROM User u JOIN u.chatRooms cr WHERE cr.chatId = :chatId AND u.username != :excludeUsername")
+    List<User> findByChatRoomsChatIdAndUsernameNot(@Param("chatId") String chatId,
+                                                   @Param("excludeUsername") String excludeUsername);
 }

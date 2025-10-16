@@ -27,19 +27,19 @@ public class MessageCleanupService {
     private final SimpMessagingTemplate messagingTemplate;
 
     // Run every day at 3 AM
-    @Scheduled(cron = "0 0 3 * * ?")
+    @Scheduled(cron = "0 35 3 * * ?")
     @Transactional
-    public void deleteMessagesOlderThan30Days() {
-        log.info("Starting 30-day message cleanup...");
+    public void deleteMessagesOlderThan7Days() {
+        log.info("Starting 7-day message cleanup...");
 
-        LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(30);
+        LocalDateTime daysAgo = LocalDateTime.now().minusDays(7);
         int deletedCount = 0;
 
         try {
-            // Find messages older than 30 days
-            List<Message> oldMessages = messageRepo.findMessagesOlderThan(thirtyDaysAgo);
 
-            // Group by chat room to handle last message updates efficiently
+            List<Message> oldMessages = messageRepo.findMessagesOlderThan(daysAgo);
+
+
             Map<String, List<Long>> chatMessageMap = new HashMap<>();
 
             for (Message message : oldMessages) {
@@ -47,15 +47,14 @@ public class MessageCleanupService {
                 chatMessageMap.computeIfAbsent(chatId, k -> new ArrayList<>()).add(message.getMessageId());
             }
 
-            // Delete all old messages
-            deletedCount = messageRepo.deleteMessagesOlderThan(thirtyDaysAgo);
 
-            // Update last messages for affected chats
+            deletedCount = messageRepo.deleteMessagesOlderThan(daysAgo);
+
             for (String chatId : chatMessageMap.keySet()) {
                 updateChatLastMessage(chatId);
             }
 
-            log.info("✅ Deleted {} messages older than 30 days", deletedCount);
+            log.info("✅ Deleted {} messages older than 7 days", deletedCount);
 
         } catch (Exception e) {
             log.error("❌ Error during message cleanup: {}", e.getMessage());
@@ -88,32 +87,32 @@ public class MessageCleanupService {
     }
 
     // Optional: Cleanup empty chats (no messages and no participants)
-    @Scheduled(cron = "0 0 4 * * ?") // Run at 4 AM, after message cleanup
-    @Transactional
-    public void cleanupEmptyChats() {
-        log.info("Starting empty chats cleanup...");
-
-        List<ChatRoom> allChats = chatRoomRepo.findAll();
-        int deletedChatCount = 0;
-
-        for (ChatRoom chat : allChats) {
-            // Check if chat has no messages and no participants
-            long messageCount = messageRepo.countByChatRoomChatId(chat.getChatId());
-            boolean hasParticipants = !chat.getParticipants().isEmpty();
-
-            if (messageCount == 0 && !hasParticipants) {
-                chatRoomRepo.delete(chat);
-                deletedChatCount++;
-                log.debug("Deleted empty chat: {}", chat.getChatId());
-            }
-        }
-
-        log.info("✅ Deleted {} empty chats", deletedChatCount);
-    }
+//    @Scheduled(cron = "0 0 4 * * ?") // Run at 4 AM, after message cleanup
+//    @Transactional
+//    public void cleanupEmptyChats() {
+//        log.info("Starting empty chats cleanup...");
+//
+//        List<ChatRoom> allChats = chatRoomRepo.findAll();
+//        int deletedChatCount = 0;
+//
+//        for (ChatRoom chat : allChats) {
+//            // Check if chat has no messages and no participants
+//            long messageCount = messageRepo.countByChatRoomChatId(chat.getChatId());
+//            boolean hasParticipants = !chat.getParticipants().isEmpty();
+//
+//            if (messageCount == 0 && !hasParticipants) {
+//                chatRoomRepo.delete(chat);
+//                deletedChatCount++;
+//                log.debug("Deleted empty chat: {}", chat.getChatId());
+//            }
+//        }
+//
+//        log.info("✅ Deleted {} empty chats", deletedChatCount);
+//    }
 
     @Scheduled(cron = "0 0 2 * * ?") // Run daily at 2 AM for stats
     public void logMessageStatistics() {
-        LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(30);
+        LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(7);
 
         long totalMessages = messageRepo.count();
         long oldMessages = messageRepo.countMessagesOlderThan(thirtyDaysAgo);
@@ -121,8 +120,8 @@ public class MessageCleanupService {
 
         log.info("📊 Message Statistics:");
         log.info("   Total messages: {}", totalMessages);
-        log.info("   Messages older than 30 days: {}", oldMessages);
-        log.info("   Recent messages (last 30 days): {}", recentMessages);
+        log.info("   Messages older than 7 days: {}", oldMessages);
+        log.info("   Recent messages (last 7 days): {}", recentMessages);
 
         if (oldMessages > 0) {
             double percentage = (double) oldMessages / totalMessages * 100;

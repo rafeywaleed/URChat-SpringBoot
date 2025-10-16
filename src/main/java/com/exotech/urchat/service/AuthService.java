@@ -27,10 +27,40 @@ public class AuthService {
     private final JwtUtil jwtUtil;
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
+    private final OTPService otpService;
 
-    @Transactional
-    public AuthResponse register(RegisterRequest request){
+//    @Transactional
+//    public AuthResponse register(RegisterRequest request){
+//
+//        if (userRepo.existsByUsername(request.getUsername())) {
+//            throw new RuntimeException("Username already exists");
+//        }
+//        if (userRepo.existsByEmail(request.getEmail())) {
+//            throw new RuntimeException("Email already exists");
+//        }
+//
+//        User user = User.builder()
+//                .username(request.getUsername())
+//                .email(request.getEmail())
+//                .password(passwordEncoder.encode(request.getPassword()))
+//                .fullName(request.getFullName())
+//                .bio(request.getBio())
+//                .build();
+//        user.setInitialPfpIndex(request.getPfpIndex());
+//        user.setInitialPfpBg(request.getPfpBg());
+//        User savedUser = userRepo.save(user);
+//
+//        String accessToken = jwtUtil.generateAccessToken(savedUser.getUsername());
+//        String refreshToken = jwtUtil.generateRefreshToken(savedUser.getUsername());
+//
+//        savedUser.setRefreshToken(refreshToken);
+//        savedUser.setRefreshTokenExpiry(LocalDateTime.now().plusYears(1));
+//        userRepo.save(savedUser);
+//
+//        return new AuthResponse(accessToken, refreshToken, savedUser.getUsername(), savedUser.getEmail(), savedUser.getFullName(),jwtUtil.getAccessTokenExpiry(accessToken), jwtUtil.getRefreshTokenExpiry(refreshToken) );
+//    }
 
+    public ApiResponse initiateRegistration(RegisterRequest request) {
         if (userRepo.existsByUsername(request.getUsername())) {
             throw new RuntimeException("Username already exists");
         }
@@ -38,15 +68,30 @@ public class AuthService {
             throw new RuntimeException("Email already exists");
         }
 
+        String otp = otpService.generateOtp();
+        otpService.saveOtp(request.getEmail(), otp, "REGISTRATION");
+        otpService.sendRegistrationOtpEmail(request.getEmail(), otp);
+
+        return new ApiResponse(true, "OTP sent to your email");
+    }
+
+    @Transactional
+    public AuthResponse completeRegistration(RegisterRequest request, String otp) {
+        if (!otpService.verifyOtp(request.getEmail(), otp, "REGISTRATION")) {
+            throw new RuntimeException("Invalid or expired OTP");
+        }
+
         User user = User.builder()
                 .username(request.getUsername())
                 .email(request.getEmail())
                 .password(passwordEncoder.encode(request.getPassword()))
                 .fullName(request.getFullName())
-                .bio(request.getBio())
+                .bio(request.getBio().isEmpty() ? "Heyya!" : request.getBio())
+                .joinedAt(LocalDateTime.now())
                 .build();
-        user.setInitalPfpIndex(request.getPfpIndex());
+        user.setInitialPfpIndex(request.getPfpIndex());
         user.setInitialPfpBg(request.getPfpBg());
+
         User savedUser = userRepo.save(user);
 
         String accessToken = jwtUtil.generateAccessToken(savedUser.getUsername());
@@ -56,8 +101,12 @@ public class AuthService {
         savedUser.setRefreshTokenExpiry(LocalDateTime.now().plusYears(1));
         userRepo.save(savedUser);
 
-        return new AuthResponse(accessToken, refreshToken, savedUser.getUsername(), savedUser.getEmail(), savedUser.getFullName(),jwtUtil.getAccessTokenExpiry(accessToken), jwtUtil.getRefreshTokenExpiry(refreshToken) );
+        return new AuthResponse(accessToken, refreshToken, savedUser.getUsername(),
+                savedUser.getEmail(), savedUser.getFullName(),
+                jwtUtil.getAccessTokenExpiry(accessToken),
+                jwtUtil.getRefreshTokenExpiry(refreshToken));
     }
+
 
     @Transactional
     public AuthResponse login(LoginRequest request) {
@@ -108,6 +157,55 @@ public class AuthService {
 
         user.setRefreshToken(null);
         user.setRefreshTokenExpiry(null);
+        user.setFcmToken(null);
         userRepo.save(user);
+    }
+
+    public ApiResponse initiatePasswordReset(String email) {
+        User user = userRepo.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Email not registered"));
+
+        String otp = otpService.generateOtp();
+        otpService.saveOtp(email, otp, "PASSWORD_RESET");
+        otpService.sendPasswordResetOtpEmail(email, otp);
+
+        return new ApiResponse(true, "Password reset OTP sent to your email");
+    }
+
+    @Transactional
+    public ApiResponse resetPassword(String email, String otp, String newPassword) {
+        if (!otpService.verifyOtp(email, otp, "PASSWORD_RESET")) {
+            throw new RuntimeException("Invalid or expired OTP");
+        }
+
+        User user = userRepo.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userRepo.save(user);
+
+        return new ApiResponse(true, "Password reset successfully");
+    }
+
+    public ApiResponse resendOtp(String email, String purpose) {
+        if ("REGISTRATION".equals(purpose) && userRepo.existsByEmail(email)) {
+            throw new RuntimeException("Email already registered");
+        }
+
+        if ("PASSWORD_RESET".equals(purpose)) {
+            userRepo.findByEmail(email)
+                    .orElseThrow(() -> new RuntimeException("Email not registered"));
+        }
+
+        String newOtp = otpService.generateOtp();
+        otpService.saveOtp(email, newOtp, purpose);
+
+        if ("REGISTRATION".equals(purpose)) {
+            otpService.sendRegistrationOtpEmail(email, newOtp);
+        } else {
+            otpService.sendPasswordResetOtpEmail(email, newOtp);
+        }
+
+        return new ApiResponse(true, "OTP sent successfully");
     }
 }

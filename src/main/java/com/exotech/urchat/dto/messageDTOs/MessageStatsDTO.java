@@ -9,6 +9,6 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class MessageStatsDTO {
     private long totalMessages;
-    private long recentMessages; // Last 30 days
-    private long oldMessages; // Older than 30 days
+    private long recentMessages; // Last 7 days
+    private long oldMessages; // Older than 7 days
 }

@@ -31,6 +31,7 @@ public class GroupChatService {
     private final MessageDTOConvertor messageDTOConvertor;
     private final ChatDTOConvertor chatDTOConvertor;
     private final ChatService chatService;
+    private final NotificationService notificationService;
 
     @Transactional
     public GroupChatRoomDTO createGroup(String name, String adminUsername, List<String> participantUsernames) {
@@ -62,17 +63,31 @@ public class GroupChatService {
 
         List<GroupMembersDTO> pendingMembersDTO = new ArrayList<>();
 
+        List<String> invitedUsernames = new ArrayList<>();
+
         for (String username : participantUsernames) {
             if (!username.equals(adminUsername)) {
                 User user = userRepo.findByUsername(username)
                         .orElseThrow(() -> new RuntimeException("User " + username + " not found"));
                 group.getPendingInvitations().add(user);
-
                 pendingMembersDTO.add(chatDTOConvertor.convertToGroupMembersDTO(user, false, false));
+
+                invitedUsernames.add(username);
+            }
+        }
+        ChatRoom chat =  chatRoomRepo.save(group);
+
+        if (!invitedUsernames.isEmpty()) {
+            try {
+                notificationService.sendGroupInvitationNotification(name, invitedUsernames);
+                log.info("📤 Sent group invitation notifications for group: {}", name);
+            } catch (Exception e) {
+                log.error("❌ Failed to send group invitation notifications: {}", e.getMessage());
+                // Don't throw exception - group creation should still succeed
             }
         }
 
-        ChatRoom chat =  chatRoomRepo.save(group);
+
         return chatDTOConvertor.convertToGroupChatRoomDTO(chat, adminUsername, membersDTO, pendingMembersDTO);
     }
 
@@ -119,31 +134,90 @@ public class GroupChatService {
             throw new RuntimeException("You are not a member of this group");
         }
 
+        // Store participants before removal to check if group becomes empty
+        int participantsBeforeRemoval = chat.getParticipants().size();
+
+        // Remove user from participants
         chat.getParticipants().removeIf(participant -> participant.getUsername().equals(username));
+
+        // Also remove from pending invitations if present
+        chat.getPendingInvitations().removeIf(invitee -> invitee.getUsername().equals(username));
 
         // If admin leaves and there are other participants, assign new admin
         if (chat.getAdmin().getUsername().equals(username)) {
             if (!chat.getParticipants().isEmpty()) {
-                User newAdmin = chat.getParticipants().get(0);
+                User newAdmin = chat.getParticipants().get(0); // Assign first participant as new admin
                 chat.setAdmin(newAdmin);
-                log.info("Transferred admin rights to {} in group {}", newAdmin.getUsername(), chatId);
+                log.info("🚨 Admin {} left group {}. Transferred admin rights to {}",
+                        username, chatId, newAdmin.getUsername());
             } else {
-                // If no participants left, PERMANENTLY DELETE THE GROUP
-                messageRepo.deleteAllByChatId(chatId);
-                chatRoomRepo.delete(chat);
-                log.info("PERMANENTLY deleted empty group {} from database", chatId);
-
-                // Broadcast group deletion
-                broadcastGroupDeletion(chatId);
+                // If no participants left after admin leaves, DELETE THE ENTIRE GROUP
+                log.info("🚨 Admin {} left group {} and no participants remain. DELETING GROUP", username, chatId);
+                permanentlyDeleteGroup(chatId);
                 return;
             }
         }
 
+        // Check if group becomes empty after this user leaves
+        if (participantsBeforeRemoval == 1 && chat.getParticipants().isEmpty()) {
+            // This was the last participant, DELETE THE ENTIRE GROUP
+            log.info("🚨 Last participant {} left group {}. DELETING EMPTY GROUP", username, chatId);
+            permanentlyDeleteGroup(chatId);
+            return;
+        }
+
+        // Save changes if group still has participants
         chatRoomRepo.save(chat);
-        log.info("User {} left group {}", username, chatId);
+        log.info("✅ User {} left group {}. Remaining participants: {}",
+                username, chatId, chat.getParticipants().size());
 
         // Update chat lists for all remaining participants
         updateChatListsForAllParticipants(chatId);
+    }
+
+    @Transactional
+    public void permanentlyDeleteGroup(String chatId) {
+        try {
+            ChatRoom chat = chatRoomRepo.findById(chatId)
+                    .orElseThrow(() -> new RuntimeException("Group not found"));
+
+            log.info("🗑️ Starting permanent deletion of group {} and all its messages", chatId);
+
+            // 1. First delete all messages from the group
+            int deletedMessages = messageRepo.deleteAllByChatId(chatId);
+            log.info("✅ Deleted {} messages from group {}", deletedMessages, chatId);
+
+            // 2. Clear all participants and pending invitations (clean up relationships)
+            chat.getParticipants().clear();
+            chat.getPendingInvitations().clear();
+
+            // 3. Delete the group itself from database
+            chatRoomRepo.delete(chat);
+            log.info("✅ PERMANENTLY deleted group {} from database", chatId);
+
+            // 4. Broadcast group deletion to all users who might have it in their lists
+            broadcastGroupDeletion(chatId);
+
+            // 5. Verify deletion
+            verifyGroupDeletion(chatId);
+
+        } catch (Exception e) {
+            log.error("❌ Error permanently deleting group {}: {}", chatId, e.getMessage());
+            throw new RuntimeException("Failed to delete group: " + e.getMessage(), e);
+        }
+    }
+
+    private void verifyGroupDeletion(String chatId) {
+        boolean groupExists = chatRoomRepo.existsById(chatId);
+        long remainingMessages = messageRepo.countByChatRoomChatId(chatId);
+
+        if (!groupExists && remainingMessages == 0) {
+            log.info("✅ VERIFIED: Group {} and all messages successfully deleted from database", chatId);
+        } else {
+            log.error("❌ VERIFICATION FAILED: Group {} still exists: {}, remaining messages: {}",
+                    chatId, groupExists, remainingMessages);
+            throw new RuntimeException("Group deletion verification failed");
+        }
     }
 
     private void broadcastGroupDeletion(String chatId) {
@@ -286,6 +360,19 @@ public class GroupChatService {
         return new PfpDTO(savedChat.getPfpIndex(), savedChat.getPfpBg());
     }
 
+    public Boolean changeAdmin(String admin, String candidate, String chatId) {
+        ChatRoom chat = chatRoomRepo.findById(chatId)
+                .orElseThrow(() -> new RuntimeException("Group not found"));
+        if(!chat.getIsGroup()) throw new RuntimeException("Chat is not a Group");
+        if(!chat.getParticipantUsernames().contains(admin) && chat.getParticipantUsernames().contains(candidate) )
+            throw new RuntimeException("User not part of " + chat.getChatName());
+        if(!chat.getAdmin().getUsername().equals(admin)) throw new RuntimeException("You're not admin");
+        User newAdmin = userRepo.findByUsername(candidate).orElseThrow();
+        chat.setAdmin(newAdmin);
+        chatRoomRepo.save(chat);
+        return true;
+    }
+
     public void deleteGroup(String chatId) {
         chatRoomRepo.deleteById(chatId);
     }
@@ -295,4 +382,6 @@ public class GroupChatService {
             if(chatRoom.getIsGroup()) chatRoomRepo.deleteById(chatRoom.getChatId());
         }
     }
+
+
 }

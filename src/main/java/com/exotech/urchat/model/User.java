@@ -53,11 +53,12 @@ public class User {
     @ToString.Exclude
     private List<ChatRoom> chatRooms = new ArrayList<>();
 
-
-
     @ManyToMany(mappedBy = "pendingInvitations", cascade = {CascadeType.PERSIST, CascadeType.MERGE})
     @ToString.Exclude
     private List<ChatRoom> chatRoomInvitations = new ArrayList<>();
+
+    @Column(name = "fcm_token")
+    private String fcmToken;
 
 //    @OneToMany(mappedBy = "sender", fetch = FetchType.EAGER, cascade = CascadeType.ALL)
 //    private List<Message> messages = new ArrayList<>();
@@ -65,6 +66,8 @@ public class User {
 //    @OneToMany(mappedBy = "admin")
 //    @ToString.Exclude
 //    private List<ChatRoom> adminChatRooms = new ArrayList<>();
+
+
 
     private String refreshToken;
     private LocalDateTime refreshTokenExpiry;
@@ -77,7 +80,7 @@ public class User {
         return chatRoomInvitations.stream().anyMatch(chat -> chat.getChatId().equals(chatId));
     }
 
-    public void setInitalPfpIndex(String emoji){
+    public void setInitialPfpIndex(String emoji){
         if(pfpIndex==null || emoji == null || pfpIndex.equals("😊")){
             int hash = username.hashCode();
             String[] emojiPalette = {

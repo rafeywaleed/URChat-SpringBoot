@@ -105,6 +105,9 @@ public class ChatController {
             @AuthenticationPrincipal String username,
             @PathVariable String chatId,
             @RequestParam String inviteeUsername) {
+        if (username.equals(inviteeUsername)) {
+            return ResponseEntity.badRequest().body("Cannot invite yourself");
+        }
         groupChatService.inviteToGroup(chatId, username, inviteeUsername);
         return ResponseEntity.ok("User invited to group");
     }
@@ -167,6 +170,16 @@ public class ChatController {
         return ResponseEntity.ok(theme);
     }
 
+    @PutMapping("/group/changeAdmin")
+    public ResponseEntity<Boolean> changeAdmin(
+            @AuthenticationPrincipal String username,
+            @RequestBody ChangeAdminRequest request
+    ){
+        if(!username.equals(request.getAdminUsername())) throw new RuntimeException("Can't make request");
+        Boolean sucess = groupChatService.changeAdmin(request.getAdminUsername(), request.getCandidateUsername(), request.getChatId());
+        return ResponseEntity.ok(sucess);
+    }
+
     @DeleteMapping("/message/{messageId}")
     public ResponseEntity<String> deleteMessage(
             @AuthenticationPrincipal String username,
@@ -199,7 +212,7 @@ public class ChatController {
         }
 
         try {
-            messageCleanupService.deleteMessagesOlderThan30Days();
+            messageCleanupService.deleteMessagesOlderThan7Days();
             return ResponseEntity.ok("Manual cleanup completed successfully");
         } catch (Exception e) {
             return ResponseEntity.status(500).body("Cleanup failed: " + e.getMessage());
@@ -212,7 +225,7 @@ public class ChatController {
             return ResponseEntity.status(403).build();
         }
 
-        LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(30);
+        LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(7);
         long totalMessages = messageRepo.count();
         long oldMessages = messageRepo.countMessagesOlderThan(thirtyDaysAgo);
         long recentMessages = totalMessages - oldMessages;
