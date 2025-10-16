@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  kindmap-app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=${PORT}
+      - DB_URL=${DB_URL}
+      - DB_USERNAME=${DB_USERNAME}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - MAIL_HOST=${MAIL_HOST}
+      - MAIL_PORT=${MAIL_PORT}
+      - MAIL_USERNAME=${MAIL_USERNAME}
+      - MAIL_PASSWORD=${MAIL_PASSWORD}
+      - MAIL_FROM=${MAIL_FROM}
+      - API_PATH=${API_PATH}
+    env_file:
+      - .env
