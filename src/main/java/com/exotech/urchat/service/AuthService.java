@@ -86,7 +86,7 @@ public class AuthService {
                 .email(request.getEmail())
                 .password(passwordEncoder.encode(request.getPassword()))
                 .fullName(request.getFullName())
-                .bio(request.getBio().isEmpty() ? "Heyya!" : request.getBio())
+                .bio(request.getBio() == null || request.getBio().isEmpty() ? "Heyya!" : request.getBio())
                 .joinedAt(LocalDateTime.now())
                 .build();
         user.setInitialPfpIndex(request.getPfpIndex());

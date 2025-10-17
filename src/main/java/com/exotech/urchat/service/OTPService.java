@@ -1,10 +1,13 @@
 package com.exotech.urchat.service;
 
+import com.mailjet.client.MailjetClient;
+import com.mailjet.client.MailjetRequest;
+import com.mailjet.client.resource.Emailv31;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
+import org.json.JSONArray;
+import org.json.JSONObject;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -16,10 +19,15 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 public class OTPService {
 
-    private final JavaMailSender mailSender;
+    private final MailjetClient mailjetClient = new MailjetClient(
+            System.getenv("MAILJET_APIKEY_PUBLIC"),
+            System.getenv("MAILJET_APIKEY_SECRET")
+    );
 
     private static final int OTP_LENGTH = 4;
     private static final long OTP_EXPIRY_MINUTES = 10;
+    private static final String FROM_EMAIL = "urchata5@gmail.com";
+    private static final String FROM_NAME = "URChat";
 
     private final Map<String, OtpData> otpStorage = new ConcurrentHashMap<>();
 
@@ -49,7 +57,6 @@ public class OTPService {
             return false;
         }
 
-        // Check if OTP is expired
         long currentTime = System.currentTimeMillis();
         long elapsedMinutes = (currentTime - otpData.getCreatedAt()) / (1000 * 60);
 
@@ -65,28 +72,41 @@ public class OTPService {
         return isValid;
     }
 
+    private void sendMail(String to, String subject, String text) {
+        try {
+            JSONObject message = new JSONObject()
+                    .put(Emailv31.Message.FROM, new JSONObject()
+                            .put("Email", FROM_EMAIL)
+                            .put("Name", FROM_NAME))
+                    .put(Emailv31.Message.TO, new JSONArray()
+                            .put(new JSONObject().put("Email", to)))
+                    .put(Emailv31.Message.SUBJECT, subject)
+                    .put(Emailv31.Message.TEXTPART, text);
+
+            MailjetRequest request = new MailjetRequest(Emailv31.resource)
+                    .property(Emailv31.MESSAGES, new JSONArray().put(message));
+
+            mailjetClient.post(request);
+        } catch (Exception e) {
+            e.printStackTrace();
+            System.err.println("❌ Failed to send email via Mailjet: " + e.getMessage());
+        }
+    }
+
     public void sendRegistrationOtpEmail(String email, String otp) {
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom("urchata5@gmail.com");
-        message.setTo(email);
-        message.setSubject("URChat - Email Verification OTP");
-        message.setText("Welcome to URChat!\n\n" +
+        String text = "Welcome to URChat!\n\n" +
                 "Your email verification OTP is: " + otp +
                 "\nThis OTP will expire in " + OTP_EXPIRY_MINUTES + " minutes." +
-                "\n\nEnter this OTP in the app to complete your registration.");
-        mailSender.send(message);
+                "\n\nEnter this OTP in the app to complete your registration.";
+        sendMail(email, "URChat - Email Verification OTP", text);
     }
 
     public void sendPasswordResetOtpEmail(String email, String otp) {
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom("urchata5@gmail.com");
-        message.setTo(email);
-        message.setSubject("URChat - Password Reset OTP");
-        message.setText("You requested to reset your password.\n\n" +
+        String text = "You requested to reset your password.\n\n" +
                 "Your password reset OTP is: " + otp +
                 "\nThis OTP will expire in " + OTP_EXPIRY_MINUTES + " minutes." +
-                "\n\nEnter this OTP in the app along with your new password.");
-        mailSender.send(message);
+                "\n\nEnter this OTP in the app along with your new password.";
+        sendMail(email, "URChat - Password Reset OTP", text);
     }
 
     @Scheduled(fixedRate = 30 * 60 * 1000)
@@ -98,5 +118,4 @@ public class OTPService {
             return elapsedMinutes > OTP_EXPIRY_MINUTES;
         });
     }
-
 }

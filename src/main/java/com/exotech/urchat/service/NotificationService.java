@@ -19,7 +19,7 @@ public class NotificationService {
 
     private final FirebaseMessaging firebaseMessaging;
     private final UserRepo userRepo;
-    private final ChatRoomRepo chatRoomRepo; // Add this
+    private final ChatRoomRepo chatRoomRepo;
 
     public void saveFcmToken(String username, String fcmToken) {
         User user = userRepo.findByUsername(username)
@@ -50,13 +50,11 @@ public class NotificationService {
             ChatRoom chatRoom = chatRoomRepo.findById(chatId)
                     .orElseThrow(() -> new RuntimeException("Chat room not found"));
 
-            // Find the recipient (the user who is NOT the sender)
             User recipient = chatRoom.getParticipants().stream()
                     .filter(user -> !user.getUsername().equals(senderUsername))
                     .findFirst()
                     .orElseThrow(() -> new RuntimeException("Recipient not found in DM"));
 
-            // ADD THIS CHECK: Don't send notification if recipient is the same as sender
             if (recipient.getUsername().equals(senderUsername)) {
                 log.info("🔕 Skipping self-notification for user: {}", senderUsername);
                 return;
@@ -73,10 +71,8 @@ public class NotificationService {
     private void sendGroupNotification(String chatId, String senderUsername,
                                        String messageContent, String chatName) {
         try {
-            // Get all participants except the sender
             List<User> recipients = userRepo.findByChatRoomsChatIdAndUsernameNot(chatId, senderUsername);
 
-            // ADD THIS: Filter out sender explicitly
             recipients = recipients.stream()
                     .filter(user -> !user.getUsername().equals(senderUsername))
                     .collect(Collectors.toList());
@@ -104,12 +100,11 @@ public class NotificationService {
     private void sendDMNotificationToUser(User recipient, String chatId, String senderUsername,
                                           String messageContent) {
         try {
-            // For DMs: Title = sender's name, Body = message content
             Message message = Message.builder()
                     .setToken(recipient.getFcmToken())
                     .setNotification(Notification.builder()
-                            .setTitle(senderUsername) // Show sender's name as title
-                            .setBody(messageContent)  // Just the message, no sender name
+                            .setTitle(senderUsername)
+                            .setBody(messageContent)
                             .build())
                     .setAndroidConfig(AndroidConfig.builder()
                             .setPriority(AndroidConfig.Priority.HIGH)
@@ -148,12 +143,11 @@ public class NotificationService {
     private boolean sendGroupNotificationToUser(User recipient, String chatId, String senderUsername,
                                                 String messageContent, String chatName) {
         try {
-            // For Groups: Title = group name, Body = sender: message
             Message message = Message.builder()
                     .setToken(recipient.getFcmToken())
                     .setNotification(Notification.builder()
-                            .setTitle(chatName) // Group name as title
-                            .setBody(senderUsername + ": " + messageContent) // Sender: Message
+                            .setTitle(chatName)
+                            .setBody(senderUsername + ": " + messageContent)
                             .build())
                     .setAndroidConfig(AndroidConfig.builder()
                             .setPriority(AndroidConfig.Priority.HIGH)
@@ -194,7 +188,6 @@ public class NotificationService {
     }
 
     private void handleInvalidToken(User user, FirebaseMessagingException e) {
-        // Remove invalid token
         if (e.getMessagingErrorCode() == MessagingErrorCode.INVALID_ARGUMENT ||
                 e.getMessagingErrorCode() == MessagingErrorCode.UNREGISTERED) {
             user.setFcmToken(null);
@@ -203,7 +196,6 @@ public class NotificationService {
         }
     }
 
-    // Your existing group invitation methods remain the same
     public void sendGroupInvitationNotification(String groupName, List<String> usernames) {
         try {
             List<User> users = userRepo.findAllByUsernames(usernames);
