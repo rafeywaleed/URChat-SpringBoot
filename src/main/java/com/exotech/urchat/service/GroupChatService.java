@@ -57,6 +57,9 @@ public class GroupChatService {
         group.setPfpBg("#FF9800");
         group.setLastActivity(LocalDateTime.now());
 
+        group.setRandomPfpIndex();
+        group.setRandomPfpBg();
+
         group.getParticipants().add(admin);
         List<GroupMembersDTO> membersDTO = new ArrayList<>();
         membersDTO.add(chatDTOConvertor.convertToGroupMembersDTO(admin,true, true));
@@ -83,7 +86,6 @@ public class GroupChatService {
                 log.info("📤 Sent group invitation notifications for group: {}", name);
             } catch (Exception e) {
                 log.error("❌ Failed to send group invitation notifications: {}", e.getMessage());
-                // Don't throw exception - group creation should still succeed
             }
         }
 

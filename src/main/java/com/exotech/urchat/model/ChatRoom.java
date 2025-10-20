@@ -137,4 +137,31 @@ public class ChatRoom {
         this.lastMessage = lastMessage;
     }
 
+
+    public void setRandomPfpIndex() {
+        if (pfpIndex == null || pfpIndex.equals("👥")) {
+            int hash = chatId != null ? chatId.hashCode() : (int) System.currentTimeMillis();
+            String[] emojiPalette = {
+                    "👥", "🎉", "🚀", "🌟", "🔥", "💼", "🎮", "🎨",
+                    "🎵", "📚", "⚽", "🍕", "☕", "🌈", "🎭", "📱"
+            };
+            int index = Math.abs(hash) % emojiPalette.length;
+            pfpIndex = emojiPalette[index];
+        }
+    }
+
+    public void setRandomPfpBg() {
+        if (pfpBg == null || pfpBg.equals("#4CAF50")) {
+            int hash = chatId != null ? chatId.hashCode() : (int) System.currentTimeMillis();
+            String[] colorPalette = {
+                    "#2196F3", "#FF9800", "#F44336", "#9C27B0",
+                    "#673AB7", "#3F51B5", "#00BCD4", "#009688",
+                    "#8BC34A", "#FFC107", "#FF5722", "#795548",
+                    "#607D8B", "#E91E63", "#4CAF50", "#FF4081"
+            };
+            int index = Math.abs(hash) % colorPalette.length;
+            pfpBg = colorPalette[index];
+        }
+    }
+
 }

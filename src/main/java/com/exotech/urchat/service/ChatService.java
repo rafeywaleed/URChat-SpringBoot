@@ -55,6 +55,7 @@ public class ChatService {
         chatRoom.setIsGroup(false);
         chatRoom.setPfpIndex("💬");
         chatRoom.setPfpBg("#2196F3");
+        chatRoom.setIsDarkTheme(false);
         chatRoom.setLastActivity(LocalDateTime.now());
         chatRoom.setLastMessage("No messages yet");
 
