@@ -213,7 +213,7 @@ public class NotificationService {
         }
     }
 
-    public void sendGroupInvitationNotification(String groupName, List<String> usernames, ChatRoom groupChat) {
+    public void sendGroupInvitationNotification(String groupName, List<String> usernames) {
         try {
             List<User> users = userRepo.findAllByUsernames(usernames);
 
@@ -222,7 +222,7 @@ public class NotificationService {
 
             for (User user : users) {
                 if (user.getFcmToken() != null && !user.getFcmToken().trim().isEmpty()) {
-                    boolean success = sendSingleGroupInvitation(user, groupName, groupChat);
+                    boolean success = sendSingleGroupInvitation(user, groupName);
                     if (success) {
                         successfulSends++;
                     } else {
@@ -242,12 +242,8 @@ public class NotificationService {
         }
     }
 
-    private boolean sendSingleGroupInvitation(User user, String groupName, ChatRoom groupChat) {
+    private boolean sendSingleGroupInvitation(User user, String groupName) {
         try {
-
-            String pfpIndex = groupChat.getPfpIndex();
-            String pfpBg = groupChat.getPfpBg();
-
             Message message = Message.builder()
                     .setToken(user.getFcmToken())
                     .setNotification(Notification.builder()
@@ -276,9 +272,6 @@ public class NotificationService {
                             .build())
                     .putData("type", "GROUP_INVITATION")
                     .putData("groupName", groupName)
-                    .putData("chatId", groupChat.getChatId())
-                    .putData("pfpIndex", pfpIndex)
-                    .putData("pfpBg", pfpBg)
                     .putData("timestamp", String.valueOf(System.currentTimeMillis()))
                     .build();
 
