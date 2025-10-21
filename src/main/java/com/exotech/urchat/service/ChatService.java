@@ -88,11 +88,13 @@ public class ChatService {
         chat.setLastActivity(LocalDateTime.now());
         chatRoomRepo.save(chat);
 
+        String chatDisplayName = chat.getDisplayName(senderUsername);
+
         notificationService.sendMessageNotification(
                 chatId,
                 senderUsername,
                 content,
-                chat.getDisplayName(senderUsername),
+                chatDisplayName,
                 chat.getIsGroup()
         );
 

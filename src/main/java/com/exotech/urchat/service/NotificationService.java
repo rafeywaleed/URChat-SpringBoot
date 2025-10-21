@@ -32,12 +32,15 @@ public class NotificationService {
     public void sendMessageNotification(String chatId, String senderUsername,
                                         String messageContent, String chatName, boolean isGroup) {
         try {
+            ChatRoom chatRoom = chatRoomRepo.findById(chatId)
+                    .orElseThrow(() -> new RuntimeException("Chat room not found"));
+
             if (!isGroup) {
-                // Handle DM notifications
-                sendDMNotification(chatId, senderUsername, messageContent, chatName);
+
+                sendDMNotification(chatId, senderUsername, messageContent, chatName, chatRoom);
             } else {
-                // Handle Group notifications
-                sendGroupNotification(chatId, senderUsername, messageContent, chatName);
+
+                sendGroupNotification(chatId, senderUsername, messageContent, chatName, chatRoom);
             }
         } catch (Exception e) {
             log.error("❌ Error sending notification: {}", e.getMessage());
@@ -45,11 +48,8 @@ public class NotificationService {
     }
 
     private void sendDMNotification(String chatId, String senderUsername,
-                                    String messageContent, String chatName) {
+                                    String messageContent, String chatName, ChatRoom chatRoom) {
         try {
-            ChatRoom chatRoom = chatRoomRepo.findById(chatId)
-                    .orElseThrow(() -> new RuntimeException("Chat room not found"));
-
             User recipient = chatRoom.getParticipants().stream()
                     .filter(user -> !user.getUsername().equals(senderUsername))
                     .findFirst()
@@ -61,7 +61,7 @@ public class NotificationService {
             }
 
             if (recipient.getFcmToken() != null && !recipient.getFcmToken().isEmpty()) {
-                sendDMNotificationToUser(recipient, chatId, senderUsername, messageContent);
+                sendDMNotificationToUser(recipient, chatId, senderUsername, messageContent, chatRoom);
             }
         } catch (Exception e) {
             log.error("❌ Error sending DM notification: {}", e.getMessage());
@@ -69,7 +69,7 @@ public class NotificationService {
     }
 
     private void sendGroupNotification(String chatId, String senderUsername,
-                                       String messageContent, String chatName) {
+                                       String messageContent, String chatName, ChatRoom chatRoom) {
         try {
             List<User> recipients = userRepo.findByChatRoomsChatIdAndUsernameNot(chatId, senderUsername);
 
@@ -82,7 +82,7 @@ public class NotificationService {
 
             for (User recipient : recipients) {
                 if (recipient.getFcmToken() != null && !recipient.getFcmToken().isEmpty()) {
-                    boolean success = sendGroupNotificationToUser(recipient, chatId, senderUsername, messageContent, chatName);
+                    boolean success = sendGroupNotificationToUser(recipient, chatId, senderUsername, messageContent, chatName, chatRoom);
                     if (success) {
                         successfulSends++;
                     } else {
@@ -97,9 +97,15 @@ public class NotificationService {
             log.error("❌ Error sending group notification: {}", e.getMessage());
         }
     }
+
     private void sendDMNotificationToUser(User recipient, String chatId, String senderUsername,
-                                          String messageContent) {
+                                          String messageContent, ChatRoom chatRoom) {
         try {
+
+            String displayName = chatRoom.getDisplayName(recipient.getUsername());
+            String pfpIndex = chatRoom.getChatPfpIndex(recipient.getUsername());
+            String pfpBg = chatRoom.getChatPfpBg(recipient.getUsername());
+
             Message message = Message.builder()
                     .setToken(recipient.getFcmToken())
                     .setNotification(Notification.builder()
@@ -128,6 +134,10 @@ public class NotificationService {
                             .build())
                     .putData("chatId", chatId)
                     .putData("sender", senderUsername)
+                    .putData("message", messageContent)
+                    .putData("chatName", displayName)
+                    .putData("pfpIndex", pfpIndex)
+                    .putData("pfpBg", pfpBg)
                     .putData("isGroup", "false")
                     .putData("type", "NEW_MESSAGE")
                     .build();
@@ -141,8 +151,12 @@ public class NotificationService {
     }
 
     private boolean sendGroupNotificationToUser(User recipient, String chatId, String senderUsername,
-                                                String messageContent, String chatName) {
+                                                String messageContent, String chatName, ChatRoom chatRoom) {
         try {
+
+            String pfpIndex = chatRoom.getChatPfpIndex(recipient.getUsername());
+            String pfpBg = chatRoom.getChatPfpBg(recipient.getUsername());
+
             Message message = Message.builder()
                     .setToken(recipient.getFcmToken())
                     .setNotification(Notification.builder()
@@ -171,7 +185,10 @@ public class NotificationService {
                             .build())
                     .putData("chatId", chatId)
                     .putData("sender", senderUsername)
+                    .putData("message", messageContent)
                     .putData("chatName", chatName)
+                    .putData("pfpIndex", pfpIndex)
+                    .putData("pfpBg", pfpBg)
                     .putData("isGroup", "true")
                     .putData("type", "NEW_MESSAGE")
                     .build();
@@ -196,7 +213,7 @@ public class NotificationService {
         }
     }
 
-    public void sendGroupInvitationNotification(String groupName, List<String> usernames) {
+    public void sendGroupInvitationNotification(String groupName, List<String> usernames, ChatRoom groupChat) {
         try {
             List<User> users = userRepo.findAllByUsernames(usernames);
 
@@ -205,7 +222,7 @@ public class NotificationService {
 
             for (User user : users) {
                 if (user.getFcmToken() != null && !user.getFcmToken().trim().isEmpty()) {
-                    boolean success = sendSingleGroupInvitation(user, groupName);
+                    boolean success = sendSingleGroupInvitation(user, groupName, groupChat);
                     if (success) {
                         successfulSends++;
                     } else {
@@ -225,8 +242,12 @@ public class NotificationService {
         }
     }
 
-    private boolean sendSingleGroupInvitation(User user, String groupName) {
+    private boolean sendSingleGroupInvitation(User user, String groupName, ChatRoom groupChat) {
         try {
+
+            String pfpIndex = groupChat.getPfpIndex();
+            String pfpBg = groupChat.getPfpBg();
+
             Message message = Message.builder()
                     .setToken(user.getFcmToken())
                     .setNotification(Notification.builder()
@@ -255,6 +276,9 @@ public class NotificationService {
                             .build())
                     .putData("type", "GROUP_INVITATION")
                     .putData("groupName", groupName)
+                    .putData("chatId", groupChat.getChatId())
+                    .putData("pfpIndex", pfpIndex)
+                    .putData("pfpBg", pfpBg)
                     .putData("timestamp", String.valueOf(System.currentTimeMillis()))
                     .build();
 
