@@ -106,20 +106,28 @@ public class NotificationService {
             String pfpIndex = chatRoom.getChatPfpIndex(recipient.getUsername());
             String pfpBg = chatRoom.getChatPfpBg(recipient.getUsername());
 
+            String groupKey = "chat_" + chatId;
+
+            AndroidNotification androidNotification = AndroidNotification.builder()
+                    .setIcon("ic_notification")
+                    .setColor("#4CAF50")
+                    .setSound("default")
+                    .setTag(groupKey)
+                    .build();
+
+            AndroidConfig androidConfig = AndroidConfig.builder()
+                    .setPriority(AndroidConfig.Priority.HIGH)
+                    .setNotification(androidNotification)
+                    .setCollapseKey(groupKey)
+                    .build();
+
             Message message = Message.builder()
                     .setToken(recipient.getFcmToken())
                     .setNotification(Notification.builder()
                             .setTitle(senderUsername)
                             .setBody(messageContent)
                             .build())
-                    .setAndroidConfig(AndroidConfig.builder()
-                            .setPriority(AndroidConfig.Priority.HIGH)
-                            .setNotification(AndroidNotification.builder()
-                                    .setIcon("ic_notification")
-                                    .setColor("#4CAF50")
-                                    .setSound("default")
-                                    .build())
-                            .build())
+                    .setAndroidConfig(androidConfig)
                     .setApnsConfig(ApnsConfig.builder()
                             .setAps(Aps.builder()
                                     .setBadge(1)
@@ -157,20 +165,28 @@ public class NotificationService {
             String pfpIndex = chatRoom.getChatPfpIndex(recipient.getUsername());
             String pfpBg = chatRoom.getChatPfpBg(recipient.getUsername());
 
+            String groupKey = "chat_" + chatId;
+
+            AndroidNotification androidNotification = AndroidNotification.builder()
+                    .setIcon("ic_notification")
+                    .setColor("#4CAF50")
+                    .setSound("default")
+                    .setTag(groupKey)
+                    .build();
+
+            AndroidConfig androidConfig = AndroidConfig.builder()
+                    .setPriority(AndroidConfig.Priority.HIGH)
+                    .setNotification(androidNotification)
+                    .setCollapseKey(groupKey)
+                    .build();
+
             Message message = Message.builder()
                     .setToken(recipient.getFcmToken())
                     .setNotification(Notification.builder()
                             .setTitle(chatName)
                             .setBody(senderUsername + ": " + messageContent)
                             .build())
-                    .setAndroidConfig(AndroidConfig.builder()
-                            .setPriority(AndroidConfig.Priority.HIGH)
-                            .setNotification(AndroidNotification.builder()
-                                    .setIcon("ic_notification")
-                                    .setColor("#4CAF50")
-                                    .setSound("default")
-                                    .build())
-                            .build())
+                    .setAndroidConfig(androidConfig)
                     .setApnsConfig(ApnsConfig.builder()
                             .setAps(Aps.builder()
                                     .setBadge(1)
