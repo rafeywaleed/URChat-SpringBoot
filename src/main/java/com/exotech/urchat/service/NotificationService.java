@@ -108,25 +108,25 @@ public class NotificationService {
 
             String groupKey = "chat_" + chatId;
 
-            AndroidNotification androidNotification = AndroidNotification.builder()
-                    .setIcon("ic_notification")
-                    .setColor("#4CAF50")
-                    .setSound("default")
-                    .setTag(groupKey)
-                    .build();
+//            AndroidNotification androidNotification = AndroidNotification.builder()
+//                    .setIcon("ic_notification")
+//                    .setColor("#4CAF50")
+//                    .setSound("default")
+//                    .setTag(groupKey)
+//                    .build();
 
             AndroidConfig androidConfig = AndroidConfig.builder()
                     .setPriority(AndroidConfig.Priority.HIGH)
-                    .setNotification(androidNotification)
+//                    .setNotification(androidNotification)
                     .setCollapseKey(groupKey)
                     .build();
 
             Message message = Message.builder()
                     .setToken(recipient.getFcmToken())
-                    .setNotification(Notification.builder()
-                            .setTitle(senderUsername)
-                            .setBody(messageContent)
-                            .build())
+//                    .setNotification(Notification.builder()
+//                            .setTitle(senderUsername)
+//                            .setBody(messageContent)
+//                            .build())
                     .setAndroidConfig(androidConfig)
                     .setApnsConfig(ApnsConfig.builder()
                             .setAps(Aps.builder()
@@ -167,25 +167,25 @@ public class NotificationService {
 
             String groupKey = "chat_" + chatId;
 
-            AndroidNotification androidNotification = AndroidNotification.builder()
-                    .setIcon("ic_notification")
-                    .setColor("#4CAF50")
-                    .setSound("default")
-                    .setTag(groupKey)
-                    .build();
+//            AndroidNotification androidNotification = AndroidNotification.builder()
+//                    .setIcon("ic_notification")
+//                    .setColor("#4CAF50")
+//                    .setSound("default")
+//                    .setTag(groupKey)
+//                    .build();
 
             AndroidConfig androidConfig = AndroidConfig.builder()
                     .setPriority(AndroidConfig.Priority.HIGH)
-                    .setNotification(androidNotification)
+//                    .setNotification(androidNotification)
                     .setCollapseKey(groupKey)
                     .build();
 
             Message message = Message.builder()
                     .setToken(recipient.getFcmToken())
-                    .setNotification(Notification.builder()
-                            .setTitle(chatName)
-                            .setBody(senderUsername + ": " + messageContent)
-                            .build())
+//                    .setNotification(Notification.builder()
+//                            .setTitle(chatName)
+//                            .setBody(senderUsername + ": " + messageContent)
+//                            .build())
                     .setAndroidConfig(androidConfig)
                     .setApnsConfig(ApnsConfig.builder()
                             .setAps(Aps.builder()
