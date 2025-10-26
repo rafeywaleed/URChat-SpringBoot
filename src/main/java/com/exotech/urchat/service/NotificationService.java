@@ -112,13 +112,13 @@ public class NotificationService {
                     .setIcon("ic_notification")
                     .setColor("#4CAF50")
                     .setSound("default")
-                    .setTag(groupKey)
+//                    .setTag(groupKey)
                     .build();
 
             AndroidConfig androidConfig = AndroidConfig.builder()
                     .setPriority(AndroidConfig.Priority.HIGH)
                     .setNotification(androidNotification)
-                    .setCollapseKey(groupKey)
+//                    .setCollapseKey(groupKey)
                     .build();
 
             Message message = Message.builder()
@@ -140,7 +140,7 @@ public class NotificationService {
                                     .setBody(messageContent)
                                     .setIcon("/icons/icon-192x192.png")
                                     .setBadge("/icons/badge-72x72.png")
-                                    .setTag("urchat-" + chatId)
+//                                    .setTag("urchat-" + chatId)
                                     .build())
                             .build())
                     .putData("chatId", chatId)
@@ -174,13 +174,13 @@ public class NotificationService {
                     .setIcon("ic_notification")
                     .setColor("#4CAF50")
                     .setSound("default")
-                    .setTag(groupKey)
+//                    .setTag(groupKey)
                     .build();
 
             AndroidConfig androidConfig = AndroidConfig.builder()
                     .setPriority(AndroidConfig.Priority.HIGH)
                     .setNotification(androidNotification)
-                    .setCollapseKey(groupKey)
+//                    .setCollapseKey(groupKey)
                     .build();
 
             Message message = Message.builder()
@@ -202,7 +202,7 @@ public class NotificationService {
                                     .setBody(senderUsername + ": " + messageContent)
                                     .setIcon("/icons/icon-192x192.png")
                                     .setBadge("/icons/badge-72x72.png")
-                                    .setTag("urchat-" + chatId)
+//                                    .setTag("urchat-" + chatId)
                                     .build())
                             .build())
                     .putData("chatId", chatId)
